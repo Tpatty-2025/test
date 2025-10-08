@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教室選號器</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", sans-serif;
+      background-color: #f6f8fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+
+    h1 {
+      margin-top: 10px;
+      font-size: 2em;
+      color: #2c3e50;
+    }
+
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    button {
+      background-color: #4a90e2;
+      border: none;
+      color: white;
+      padding: 10px 16px;
+      font-size: 1rem;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #357abd;
+    }
+
+    input[type="number"], input[type="file"], input[type="text"] {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+      width: 90px;
+    }
+
+    .range, .multi-draw {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #display {
+      font-size: 5rem;
+      margin-top: 40px;
+      color: #e74c3c;
+      font-weight: bold;
+      min-height: 100px;
+    }
+
+    #history {
+      margin-top: 30px;
+      width: 80%;
+      background-color: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    #history span {
+      display: inline-block;
+      background-color: #dfe6e9;
+      padding: 8px 12px;
+      margin: 5px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+    }
+
+    #importNames {
+      margin-top: 10px;
+    }
+
+    .fade {
+      animation: fadeIn 0.4s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {opacity: 0; transform: scale(0.8);}
+      to {opacity: 1; transform: scale(1);}
+    }
+  </style>
+</head>
+<body>
+  <h1>🎲 教室選號器</h1>
+
+  <div class="range">
+    <label>起號：</label>
+    <input type="number" id="startNum" value="1" min="1">
+    <label>迄號：</label>
+    <input type="number" id="endNum" value="30" min="1">
+    <button onclick="setRange()">設定範圍</button>
+  </div>
+
+  <div class="multi-draw">
+    <label>一次抽：</label>
+    <input type="number" id="multiCount" value="1" min="1" max="10">
+  </div>
+
+  <div id="importNames">
+    <input type="file" id="fileInput" accept=".txt">
+    <small>（可上傳學生名單 txt，每行一個姓名）</small>
+  </div>
+
+  <div class="controls">
+    <button onclick="drawNumber()">抽號</button>
+    <button onclick="resetNumbers()">重置名單</button>
+    <button onclick="downloadHistory()">下載結果</button>
+  </div>
+
+  <div id="display">--</div>
+
+  <div id="history">
+    <strong>抽出紀錄：</strong>
+    <div id="historyList"></div>
+  </div>
+
+  <audio id="dingSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_04a4e8c2f2.mp3"></audio>
+
+  <script>
+    let numbers = [];
+    let history = [];
+    let isAnimating = false;
+    let useNames = false;
+
+    function setRange() {
+      const start = parseInt(document.getElementById("startNum").value);
+      const end = parseInt(document.getElementById("endNum").value);
+      if (start >= end) {
+        alert("⚠️ 起號必須小於迄號！");
+        return;
+      }
+      numbers = [];
+      for (let i = start; i <= end; i++) {
+        numbers.push(i.toString());
+      }
+      history = [];
+      updateHistory();
+      document.getElementById("display").textContent = "--";
+      alert(`✅ 範圍設定為 ${start} ～ ${end}`);
+      useNames = false;
+    }
+
+    document.getElementById("fileInput").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const lines = event.target.result.split("\n").map(l => l.trim()).filter(Boolean);
+        if (lines.length > 0) {
+          numbers = [...lines];
+          history = [];
+          updateHistory();
+          document.getElementById("display").textContent = "--";
+          alert(`✅ 已匯入 ${lines.length} 位學生名單`);
+          useNames = true;
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    function drawNumber() {
+      if (isAnimating) return;
+      if (numbers.length === 0) {
+        alert("⚠️ 名單已抽完，請重置！");
+        return;
+      }
+
+      const multiCount = parseInt(document.getElementById("multiCount").value);
+      const drawCount = Math.min(multiCount, numbers.length);
+
+      isAnimating = true;
+      let display = document.getElementById("display");
+      let count = 0;
+      const interval = setInterval(() => {
+        display.textContent = numbers[Math.floor(Math.random() * numbers.length)];
+        count++;
+        if (count > 15) {
+          clearInterval(interval);
+          let drawn = [];
+          for (let i = 0; i < drawCount; i++) {
+            const idx = Math.floor(Math.random() * numbers.length);
+            drawn.push(numbers[idx]);
+            numbers.splice(idx, 1);
+          }
+          history.push(...drawn);
+          document.getElementById("dingSound").play();
+          display.textContent = drawn.join("，");
+          display.classList.add("fade");
+          setTimeout(() => display.classList.remove("fade"), 400);
+          updateHistory();
+          isAnimating = false;
+        }
+      }, 80);
+    }
+
+    function updateHistory() {
+      const list = document.getElementById("historyList");
+      list.innerHTML = "";
+      history.forEach(item => {
+        const span = document.createElement("span");
+        span.textContent = item;
+        list.appendChild(span);
+      });
+    }
+
+    function resetNumbers() {
+      if (!useNames) {
+        setRange();
+      } else {
+        alert("⚠️ 請重新匯入學生名單以重置。");
+      }
+    }
+
+    function downloadHistory() {
+      if (history.length === 0) {
+        alert("⚠️ 尚未抽出任何號碼！");
+        return;
+      }
+      const blob = new Blob([history.join("\n")], {type: "text/plain"});
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "抽號結果.txt";
+      link.click();
+    }
+
+    // 初始化
+    setRange();
+  </script>
+</body>
+</html>
